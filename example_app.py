@@ -1,11 +1,14 @@
 """An example of a single page Flask application"""
 
+from datetime import datetime
+from os import getenv
 import requests
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
-app.config['SQLALCHEMMY_DATABASE_URI'] = 'sqlite:///db.sqlite3'
+app.config['SQLALCHEMY_DATABASE_URI'] = getenv("DATABASE_URI")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 DB = SQLAlchemy(app)
 
 # app routes
@@ -14,28 +17,35 @@ DB = SQLAlchemy(app)
 
 @app.route('/')
 def hello_world():
-    return 'This is the "/" route'
+    # Querying from our new database
+    astro_data = Astronauts.query.all()[0]
+    return 'There are {} astros in space at {}!'.format(astro_data.num_astros, astro_data.time_stamp)
 
 
-@app.route('/an_endpoint')
-def an_endpoint():
-    return 'This is the "/an_endpoint" route'
+@app.route('/refresh')
+def refresh():
+    request = requests.get("http://api.open-notify.org/astros.json")
+    astro_data = request.json()
+    api_astro_info = astro_data["number"]
+    record = Astronauts(num_astros=api_astro_info,
+                        time_stamp=str(datetime.now()))
+    DB.session.add(record)
+    DB.session.commit()
+    return "Database Updated!"
 
 
-# Create Astronouts table
-SQL_equivalent = """
-  CREATE TABLE Astronauts (
-   id INTEGER PRIMARY KEY,
-   username VARCHAR(80) NOT NULL,
-   email VARCHAR(120) NOT NULL,
-);
-"""
+@app.route('/reset')
+def reset():
+    DB.drop_all()
+    DB.create_all()
+    return "Database reset!"
 
 
+# This creates an Astronaut table using SQLAlchemy
 class Astronauts(DB.Model):
-    id = DB.Column(DB.BigInteger, primary_key=True)
-    username = DB.Column(DB.String(80), nullable=False)
-    email = DB.Column(DB.String(120), nullable=False)
+    id = DB.Column(DB.Integer, primary_key=True)
+    num_astros = DB.Column(DB.Integer, nullable=False)
+    time_stamp = DB.Column(DB.String(30))
 
     def __repr__(self):
-        return '<User %r>' % self.username
+        return "# of astros: {}".format(self.num_astros)
